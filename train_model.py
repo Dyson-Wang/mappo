@@ -12,7 +12,7 @@ if __name__ == '__main__':
     parser.add_argument('--data', type=str, default='data/')
     parser.add_argument('--ckp', type=str, default='ckp/')
     parser.add_argument('--model', type=str, default='resnet18',
-                        choices=['resnet18', 'vgg11', 'mobilenetv2'])
+                        choices=['resnet18', 'resnet152', 'vgg11', 'mobilenetv2'])
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--batch_size', type=int, default=64)
@@ -24,6 +24,8 @@ if __name__ == '__main__':
 
     if args.model == 'resnet18':
         net = torchvision.models.resnet18(num_classes=101).cuda()
+    elif args.model == 'resnet152':
+        net = torchvision.models.resnet152(num_classes=101).cuda()
     elif args.model == 'vgg11':
         net = torchvision.models.vgg11_bn(num_classes=101).cuda()
     elif args.model == 'mobilenetv2':

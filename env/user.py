@@ -32,7 +32,7 @@ class UserEquipment:
             self.channel = 0
             self.power = 1e-10
         else:
-            self.point = np.random.choice(np.arange(6))
+            self.point = np.random.choice(np.arange(50))
             self.channel = np.random.choice(np.arange(self.num_channels))
             self.power = np.random.random() * (self.pmax - 1e-10) + 1e-10
         self.next_point = self.point
@@ -91,7 +91,7 @@ class UserEquipment:
         self.is_free = True
 
     def in_local_mode(self):
-        if self.point == 5:
+        if self.point == 49:
             return True
         else:
             return False

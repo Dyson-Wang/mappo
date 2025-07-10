@@ -52,6 +52,7 @@ def test(args, episode, step, test_env, agent, logger=None):
         time_used += info['total_time_used']
         energy_used += info['total_energy_used']
         finished += info['total_finished']
+    # print(finished)
 
     avg_time_used = time_used / finished
     avg_energy_used = energy_used / finished
@@ -65,7 +66,7 @@ def init_parser():
     parser.add_argument('--exp_name', type=str, default='default_DRL')
 
     # system
-    parser.add_argument('--net', default='resnet18', type=str)
+    parser.add_argument('--net', default='resnet152', type=str, help='可选：resnet18, resnet152, mobilenetv2, vgg11')
     parser.add_argument('--possion_lambda', default=200, type=int)
     parser.add_argument('--num_channels', default=2, type=int)
     parser.add_argument('--num_users', default=5, type=int)
@@ -73,7 +74,7 @@ def init_parser():
     parser.add_argument('--pmax', default=1, type=float, help='max power')
     parser.add_argument('--dmax', default=100, type=float, help='max distance')
     parser.add_argument('--dmin', default=1, type=float, help='min distance')
-    parser.add_argument('--beta', default=1, type=float)
+    parser.add_argument('--beta', default=0.007, type=float)
 
     # channel
     parser.add_argument('--path_loss_exponent', default=3, type=float)

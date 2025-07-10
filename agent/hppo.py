@@ -9,7 +9,7 @@ from .model import Actor, Critic
 class HPPO:
     def __init__(self, num_users, num_states, num_channels, lr_a, lr_c, pmax, gamma, lam, repeat_time, batch_size,
                  eps_clip, w_entropy):
-        self.actors = [Actor(num_states, 6, num_channels, pmax).cuda() for _ in range(num_users)]
+        self.actors = [Actor(num_states, 49, num_channels, pmax).cuda() for _ in range(num_users)]
         self.critic = Critic(num_states).cuda()
 
         self.optimizer_a = torch.optim.Adam([{'params': actor.parameters(), 'lr': lr_a} for actor in self.actors])

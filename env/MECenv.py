@@ -6,6 +6,7 @@ from .user import UserEquipment
 
 normalize_factor = {'vgg11': (0.092876, 1204224),
                     'resnet18': (0.045887, 1204224),
+                    'resnet152': (0.8423508167266845, 3212444),
                     'mobilenetv2': (0.052676, 1204224)}
 
 
@@ -30,8 +31,9 @@ class MECsystem(object):
     def get_reward(self):
         energy = np.mean([u.energy_used for u in self.UEs])
         finished = np.mean([u.finished_num for u in self.UEs])
-        avg_e = energy / max(finished, 0.8)
-        avg_t = self.slot_time / max(finished, 0.8)
+        time = np.mean([u.time_left for u in self.UEs])
+        avg_e = energy
+        avg_t = time
         reward = -avg_t - self.beta * avg_e
         return reward
 
@@ -76,7 +78,7 @@ class MECsystem(object):
         reward = self.get_reward()
 
         # info
-        total_time_used = self.slot_time * self.num_users
+        total_time_used = sum([u.time_used for u in self.UEs])
         total_energy_used = sum([u.energy_used for u in self.UEs])
         total_finished = sum([u.finished_num for u in self.UEs])
         info = {'total_time_used': total_time_used,
