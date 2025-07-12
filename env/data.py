@@ -81,7 +81,7 @@ data = [[[3 * 224 * 224 * 8, 1, 0, 0, 0],  # vgg11
 
 # head_time, tail_time, total_time, head_power, tail_power, data_size
 dataG = [
-    [0.13912029266357423, 0.17697544097900392, 0.31609573364257815, 24.424, 108.64, 3212444],
+    [0.13912029266357423, 0.17697544097900392, 0.31609573364257815, 24.424, 124.64, 3212444],
     [0.13784356117248536, 0.11342730522155761, 0.25127086639404295, 24.528, 124.982, 3212444],
     [0.1441175937652588, 0.10122289657592773, 0.24534049034118652, 24.838, 125.324, 3212444], 
     [0.10639810562133789, 0.07923331260681152, 0.1856314182281494, 24.628, 125.52, 1606812], 
@@ -145,7 +145,14 @@ def get_data(model, point):
     else:
         raise NotImplementedError
     params = d[point]
-    data_size = params[5]
+    mid_data_size = params[5] / 4 * 3 / 4 * 8
+    head_latency = params[0]
+    tail_latency = params[1]
+    head_power = params[3]
+    tail_power = params[4]
+    return mid_data_size, head_latency, head_power, tail_latency, tail_power
+    # 量化之后的 base64 量化 bit
+    data_size = params[5] / 4 * 3 / 4 * 8
     latency = params[2]
     power = params[3] + params[4]
     # energy = params[4]

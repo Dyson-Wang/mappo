@@ -8,6 +8,7 @@ from utils import *
 def train(args, agent, env, test_env, save_dir, logger, start_episode=0, start_step=0):
     global_episode = start_episode
     global_step = start_step
+    # 200 * 0.15 / 0.5
     max_episode_step = int((args.possion_lambda * 0.15) / args.slot_time)
     while True:
         s_t = env.reset()
@@ -69,16 +70,16 @@ def init_parser():
     parser.add_argument('--net', default='resnet152', type=str, help='可选：resnet18, resnet152, mobilenetv2, vgg11')
     parser.add_argument('--possion_lambda', default=200, type=int)
     parser.add_argument('--num_channels', default=2, type=int)
-    parser.add_argument('--num_users', default=5, type=int)
+    parser.add_argument('--num_users', default=10, type=int)
     parser.add_argument('--num_user_state', default=4, type=int)
-    parser.add_argument('--pmax', default=1, type=float, help='max power')
+    parser.add_argument('--pmax', default=3, type=float, help='max power')
     parser.add_argument('--dmax', default=100, type=float, help='max distance')
     parser.add_argument('--dmin', default=1, type=float, help='min distance')
-    parser.add_argument('--beta', default=0.007, type=float)
+    parser.add_argument('--beta', default=0.5, type=float)
 
     # channel
     parser.add_argument('--path_loss_exponent', default=3, type=float)
-    parser.add_argument('--width', default=1e6, type=float)
+    parser.add_argument('--width', default=1e7, type=float)
     parser.add_argument('--noise', default=1e-9, type=float)
 
     # PPO
@@ -87,10 +88,10 @@ def init_parser():
 
     parser.add_argument('--max_global_step', type=int, default=500000)
     parser.add_argument('--gamma', type=float, default=0.95)
-    parser.add_argument('--slot_time', default=0.5, type=float)
+    parser.add_argument('--slot_time', default=0.04, type=float)
 
     parser.add_argument('--repeat_time', default=20, type=int)
-    parser.add_argument('--step', default=1024, type=int)
+    parser.add_argument('--step', default=500, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--lam', default=0.95, type=float)
     parser.add_argument('--eps_clip', default=0.2, type=float)

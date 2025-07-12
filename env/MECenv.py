@@ -22,6 +22,7 @@ class MECsystem(object):
         state = []
         for u in self.UEs:
             max_time, max_data = normalize_factor[u.net]
+            # 完成任务数、剩余时间、剩余数据、距离比
             state.append(u.left_task_num / u.total_task)
             state.append(u.time_left / max_time)
             state.append(u.data_left / max_data)
@@ -31,10 +32,10 @@ class MECsystem(object):
     def get_reward(self):
         energy = np.mean([u.energy_used for u in self.UEs])
         finished = np.mean([u.finished_num for u in self.UEs])
-        time = np.mean([u.time_left for u in self.UEs])
+        time = np.mean([u.time_used for u in self.UEs])
         avg_e = energy
         avg_t = time
-        reward = -avg_t - self.beta * avg_e
+        reward = - avg_t / 0.8312 - self.beta * avg_e / 124.2
         return reward
 
     def reset(self):
@@ -52,7 +53,8 @@ class MECsystem(object):
         # init
         done = False
         time_in_slot = 0
-
+        # 一开始传入的完整的本地执行
+        # 此时传入输出的action
         self.assign_action(action)
 
         for u in self.UEs:
@@ -60,11 +62,12 @@ class MECsystem(object):
 
         # state step
         next_time = self.stationary_time()
+        # 执行下次决策还有剩余时间时
         while time_in_slot + next_time < self.slot_time:
             self.slot_step(next_time)
             time_in_slot += next_time
             next_time = self.stationary_time()
-
+        # 当当前时隙还有剩余时
         if self.slot_time - time_in_slot > 0:
             self.slot_step(self.slot_time - time_in_slot)
 
@@ -125,7 +128,9 @@ class MECsystem(object):
                 raise RuntimeError('unknown user state')
 
     def stationary_time(self):
+        # 更新信道内传输速率
         self.update_uplink_rate()
+        # 最小时间为时隙时间
         min_time = self.slot_time
         for u in self.UEs:
             if u.is_inferring:
@@ -138,6 +143,7 @@ class MECsystem(object):
                 raise RuntimeError('unknown user state')
             if time < min_time:
                 min_time = time
+            # 返回的肯定比时隙小
         return min_time
 
     def update_uplink_rate(self):
@@ -152,6 +158,7 @@ class MECsystem(object):
             channel.update_uplink_rate()
 
     def assign_action(self, action):
+        # action是10个终端的划分点
         for u, a in zip(self.UEs, action):
             point = a[0]
             channel = a[1]
