@@ -8,11 +8,14 @@ class UserEquipment:
         self.num_channels = num_channels
         self.num_points = num_points
         self.possion_lambda = possion_lambda
+
         self.pmax = pmax
         self.dmin = dmin
         self.dmax = dmax
+
         self.net = net
         self.test = test
+
         self.reset()
 
     def reset(self):
@@ -74,22 +77,26 @@ class UserEquipment:
             raise RuntimeError('No tasks left')
         
         mid_data_size, head_latency, head_power, tail_latency, tail_power = get_data(self.net, self.point)
+
         self.head_time_left = head_latency
         self.tail_time_left = tail_latency
-        self.time_left = self.head_time_left + self.tail_time_left
+
         self.data_left = mid_data_size
 
         self.local_power = head_power
         self.mec_power = tail_power
-        if self.in_cloud_mode():
-            self.offloading()
-            self.inference_power = 0
-        elif self.in_local_mode():
-            self.inferring()
-            self.inference_power = self.local_power
-        else:
-            self.inferring()
-            self.inference_power = self.mec_power
+        self.inference_power = self.local_power
+        self.inferring()
+        
+        # if self.in_cloud_mode():
+        #     self.offloading()
+        #     self.inference_power = 0
+        # elif self.in_local_mode():
+        #     self.inferring()
+        #     self.inference_power = self.local_power
+        # else:
+        #     self.inferring()
+        #     self.inference_power = self.local_power
 
     def inferring(self):
         self.is_inferring = True

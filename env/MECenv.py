@@ -12,10 +12,12 @@ normalize_factor = {'vgg11': (0.092876, 1204224),
 
 class MECsystem(object):
     def __init__(self, slot_time, num_users, num_channels, user_params, channel_params, beta=0.5):
-        self.num_users = num_users
-        self.UEs = [UserEquipment(**user_params) for _ in range(num_users)]
         self.slot_time = slot_time
+        self.num_users = num_users
+
+        self.UEs = [UserEquipment(**user_params) for _ in range(num_users)]
         self.channels = [SubChannel(**channel_params) for _ in range(num_channels)]
+
         self.beta = beta
 
     def get_state(self):
@@ -24,7 +26,7 @@ class MECsystem(object):
             max_time, max_data = normalize_factor[u.net]
             # 完成任务数、剩余时间、剩余数据、距离比
             state.append(u.left_task_num / u.total_task)
-            state.append(u.time_left / max_time)
+            state.append((u.head_time_left + u.tail_time_left) / max_time)
             state.append(u.data_left / max_data)
             state.append((u.distance - u.dmin) / (u.dmax - u.dmin))
         return state
@@ -33,9 +35,10 @@ class MECsystem(object):
         energy = np.mean([u.energy_used for u in self.UEs])
         finished = np.mean([u.finished_num for u in self.UEs])
         time = np.mean([u.time_used for u in self.UEs])
-        avg_e = energy
-        avg_t = time
-        reward = - avg_t / 0.8312 - self.beta * avg_e / 124.2
+        avg_e = energy / max(finished, 0.8)
+        avg_t = time / max(finished, 0.8)
+        # reward = - avg_t / 0.8312 - self.beta * avg_e / 124.2
+        reward = - avg_t - self.beta * avg_e
         return reward
 
     def reset(self):
@@ -82,6 +85,7 @@ class MECsystem(object):
 
         # info
         total_time_used = sum([u.time_used for u in self.UEs])
+        # total_time_used = self.slot_time * self.num_users
         total_energy_used = sum([u.energy_used for u in self.UEs])
         total_finished = sum([u.finished_num for u in self.UEs])
         info = {'total_time_used': total_time_used,
@@ -96,20 +100,56 @@ class MECsystem(object):
             if u.is_inferring:
                 u.time_used += time
                 u.energy_used += u.inference_power * time
-                if (u.time_left - time) < 1e-10:
-                    u.time_left = 0
-                    # -> inferring or free
-                    if u.in_local_mode():
-                        u.finish_task()
-                    # -> offloading
-                    elif u.in_mec_mode():
+                if (u.head_time_left > 0):
+                    if (u.head_time_left - time) < 1e-10:
+                        u.head_time_left = 0
+                        u.inference_power = u.mec_power
                         u.offloading()
+                    elif u.head_time_left > time:
+                        u.head_time_left -= time
                     else:
-                        raise RuntimeError('enter local inference in cloud mode')
-                elif u.time_left > time:
-                    u.time_left -= time
+                        raise RuntimeError(f'left head inference time {u.head_time_left}s < step time {time}s')
+                    
+                elif (u.tail_time_left > 0):
+                    if (u.tail_time_left - time) < 1e-10:
+                        u.tail_time_left = 0
+                        u.finish_task()
+                    elif u.tail_time_left > time:
+                        u.tail_time_left -= time
+                    else:
+                        raise RuntimeError(f'left tail inference time {u.tail_time_left}s < step time {time}s')
+                    
                 else:
-                    raise RuntimeError(f'left inference time {u.time_left}s < step time {time}s')
+                    raise RuntimeError('user has no slot inferring time left')
+                    
+                # if u.in_local_mode():
+                #     if (u.head_time_left - time) < 1e-10:
+                #         u.head_time_left = 0
+                #         u.finish_task()
+                #     elif u.head_time_left > time:
+                #         u.head_time_left -= time
+                #     else:
+                #         raise RuntimeError(f'left inference time {u.time_left}s < step time {time}s')
+                # elif u.in_mec_mode():
+                #     if u.head_time_left > 0:
+                #         if (u.head_time_left - time) < 1e-10:
+                #             u.head_time_left = 0
+                #             u.inference_power = u.mec_power
+                #             u.offloading()
+                #         elif u.head_time_left > time:
+                #             u.head_time_left -= time
+                #         else:
+                #             raise RuntimeError(f'left head inference time {u.head_time_left}s < step time {time}s')
+                #     else:
+                #         if (u.tail_time_left - time) < 1e-10:
+                #             u.tail_time_left = 0
+                #             u.finish_task()
+                #         elif u.tail_time_left > time:
+                #             u.tail_time_left -= time
+                #         else:
+                #             raise RuntimeError(f'left tail inference time {u.tail_time_left}s < step time {time}s')
+                # else:
+                #     raise RuntimeError('enter local inference in cloud mode')
 
             elif u.is_offloading:
                 u.time_used += time
@@ -117,7 +157,13 @@ class MECsystem(object):
                 if (u.data_left / u.uplink_rate - time) < 1e-10:
                     # -> inferring, offloading, or free
                     u.data_left = 0
-                    u.finish_task()
+                    u.inference_power = u.mec_power
+                    u.inferring()
+                    # if u.in_mec_mode():
+                    #     u.inference_power = u.mec_power
+                    #     u.inferring()
+                    # else:
+                    #     u.finish_task()
                 elif u.data_left / u.uplink_rate > time:
                     u.data_left -= u.uplink_rate * time
                 else:
@@ -134,7 +180,20 @@ class MECsystem(object):
         min_time = self.slot_time
         for u in self.UEs:
             if u.is_inferring:
-                time = u.time_left
+                if(u.head_time_left > 0):
+                    time = u.head_time_left
+                elif(u.tail_time_left > 0):
+                    time = u.tail_time_left
+                else:
+                    raise RuntimeError('user has no inferring time left')
+                # if(u.in_local_mode()):
+                #     time = u.head_time_left
+                # elif(u.in_mec_mode()):
+                #     if(u.data_left > 0):
+                #         time = u.head_time_left
+                #     else:
+                #         time = u.tail_time_left
+                # time = u.time_left
             elif u.is_offloading:
                 time = u.data_left / u.uplink_rate  # todo: divide by zero?
             elif u.is_free:

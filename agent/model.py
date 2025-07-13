@@ -2,9 +2,21 @@ import torch.nn as nn
 
 
 class Actor(nn.Module):
-    def __init__(self, num_states, num_points, num_channels, pmax):
+    def __init__(self, num_states, num_points, num_channels, pmax, lstm_hidden_size=128):
         super(Actor, self).__init__()
+
+        # 前馈编码器
+        self.encoder = nn.Sequential(
+            nn.Linear(num_states, 128),
+            nn.ReLU(),
+        )
+
+        # LSTM记忆模块
+        self.lstm = nn.LSTM(input_size=128, hidden_size=lstm_hidden_size, batch_first=True)
+
         self.base = nn.Sequential(nn.Linear(num_states, 256),
+                                  nn.ReLU(),
+                                  nn.Linear(256, 256),
                                   nn.ReLU(),
                                   nn.Linear(256, 128),
                                   nn.ReLU())

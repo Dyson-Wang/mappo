@@ -58,7 +58,7 @@ def test(args, episode, step, test_env, agent, logger=None):
     avg_time_used = time_used / finished
     avg_energy_used = energy_used / finished
     if logger is not None:
-        logger.info(f'step {step}, reward {test_reward:.4f}, ({avg_time_used:.6f}s {avg_energy_used:.6f}j)/task/device')
+        logger.info(f'step {step}, reward {test_reward:.4f}, ({avg_time_used:.6f}s, {time_used:.6f}s, {avg_energy_used:.6f}j, {energy_used:.6f}j,)/task/device, {finished} tasks finished')
 
 
 def init_parser():
@@ -88,7 +88,7 @@ def init_parser():
 
     parser.add_argument('--max_global_step', type=int, default=500000)
     parser.add_argument('--gamma', type=float, default=0.95)
-    parser.add_argument('--slot_time', default=0.04, type=float)
+    parser.add_argument('--slot_time', default=0.6, type=float)
 
     parser.add_argument('--repeat_time', default=20, type=int)
     parser.add_argument('--step', default=500, type=int)
@@ -112,6 +112,7 @@ if __name__ == "__main__":
 
     user_params = {
         'num_channels': args.num_channels,
+        'num_points': 50,
         'possion_lambda': args.possion_lambda,
         'pmax': args.pmax,
         'dmin': args.dmin,
@@ -121,6 +122,7 @@ if __name__ == "__main__":
     }
     test_user_params = {
         'num_channels': args.num_channels,
+        'num_points': 50,
         'possion_lambda': args.possion_lambda,
         'pmax': args.pmax,
         'dmin': args.dmin,
