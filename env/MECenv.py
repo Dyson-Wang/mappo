@@ -37,9 +37,23 @@ class MECsystem(object):
         time = np.mean([u.time_used for u in self.UEs])
         avg_e = energy / max(finished, 0.8)
         avg_t = time / max(finished, 0.8)
-        # reward = - avg_t / 0.8312 - self.beta * avg_e / 124.2
-        reward = - avg_t - self.beta * avg_e
+        reward = - avg_t / 0.8312 - self.beta * avg_e / 15.64466
+        # reward = - avg_t - self.beta * avg_e
         return reward
+    
+    def get_divided_reward(self):
+        rewards = []
+        for u in self.UEs:
+            energy = u.energy_used
+            finished = u.finished_num
+            time = u.time_used
+            avg_e = energy / max(finished, 0.8)
+            avg_t = time / max(finished, 0.8)
+            # reward = - avg_t / 0.8312 - self.beta * avg_e / 124.2
+            reward = - avg_t / 0.8312 - self.beta * avg_e / 15.64466
+            # reward = - avg_t - self.beta * avg_e
+            rewards.append(reward)
+        return rewards
 
     def reset(self):
         self.time = 0
@@ -81,7 +95,7 @@ class MECsystem(object):
 
         # state & reward
         state = self.get_state()
-        reward = self.get_reward()
+        reward = self.get_divided_reward()
 
         # info
         total_time_used = sum([u.time_used for u in self.UEs])

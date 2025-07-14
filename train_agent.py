@@ -8,7 +8,39 @@ from utils import *
 def train(args, agent, env, test_env, save_dir, logger, start_episode=0, start_step=0):
     global_episode = start_episode
     global_step = start_step
-    # 200 * 0.15 / 0.5
+    # for i in range(50):
+    #     actions = [
+    #         (i, 0, 2.8490683436393738),
+    #         (i, 1, 2.9760618209838867), 
+    #         (i, 2, 2.4263856410980225), 
+    #         (i, 3, 2.5711382031440735), 
+    #         (i, 4, 2.6409727334976196), 
+    #         (i, 5, 2.3382599353790283), 
+    #         (i, 6, 2.112567901611328), 
+    #         (i, 7, 2.5569998025894165), 
+    #         (i, 8, 2.5565664768218994), 
+    #         (i, 9, 2.5968937873840332)
+    #         ]
+    #     print(f'episode 1 actions {actions}')
+    #     s_t = env.reset()
+    #     done = False
+    #     test_reward = 0
+    #     time_used = 0
+    #     energy_used = 0
+    #     finished = 0
+    #     while True:
+    #         s_t1, r_t, done, info = env.step(actions)
+    #         test_reward += r_t
+    #         time_used += info['total_time_used']
+    #         energy_used += info['total_energy_used']
+    #         finished += info['total_finished']
+    #         if done:
+    #             avg_time_used = time_used / finished
+    #             avg_energy_used = energy_used / finished
+    #             logger.info(f'step {i}, reward {test_reward:.4f}, ({avg_time_used:.6f}s, {time_used:.6f}s, {avg_energy_used:.6f}j, {energy_used:.6f}j,)/task/device, {finished} tasks finished')
+    #             break
+    # return
+    200 * 0.15 / 0.5
     max_episode_step = int((args.possion_lambda * 0.15) / args.slot_time)
     while True:
         s_t = env.reset()
@@ -45,20 +77,45 @@ def test(args, episode, step, test_env, agent, logger=None):
     time_used = 0
     energy_used = 0
     finished = 0
+    split_point_avg = 0
+    avg_channel = 0
+    avg_power = 0
     while not done:
         actions = agent.select_action(s_t, test=True)
         s_t1, r_t, done, info = test_env.step(actions)
         s_t = s_t1
-        test_reward += r_t
+        test_reward += sum(r_t) / len(r_t)
         time_used += info['total_time_used']
         energy_used += info['total_energy_used']
         finished += info['total_finished']
+        points = [actions[0] for actions in actions]
+        channels = [actions[1] for actions in actions]
+        powers = [actions[2] for actions in actions]
+        avg_point = sum(points) / len(points)
+        avg_channel = sum(channels) / len(channels)
+        avg_power = sum(powers) / len(powers)
+        if(split_point_avg == 0):
+            split_point_avg = avg_point
+
+        else:
+            split_point_avg += avg_point
+            split_point_avg /= 2
+        if(avg_channel == 0):
+            avg_channel = avg_channel
+        else:
+            avg_channel += avg_channel
+            avg_channel /= 2
+        if(avg_power == 0):
+            avg_power = avg_power
+        else:
+            avg_power += avg_power
+            avg_power /= 2
     # print(finished)
 
     avg_time_used = time_used / finished
     avg_energy_used = energy_used / finished
     if logger is not None:
-        logger.info(f'step {step}, reward {test_reward:.4f}, ({avg_time_used:.6f}s, {time_used:.6f}s, {avg_energy_used:.6f}j, {energy_used:.6f}j,)/task/device, {finished} tasks finished')
+        logger.info(f'step {step}, reward {test_reward:.4f}, point_avg {split_point_avg}, ({avg_time_used:.6f}s, {avg_energy_used:.6f}j,)/task/device, avg_channel {avg_channel}, avg_power {avg_power}')
 
 
 def init_parser():
@@ -69,7 +126,7 @@ def init_parser():
     # system
     parser.add_argument('--net', default='resnet152', type=str, help='可选：resnet18, resnet152, mobilenetv2, vgg11')
     parser.add_argument('--possion_lambda', default=200, type=int)
-    parser.add_argument('--num_channels', default=2, type=int)
+    parser.add_argument('--num_channels', default=5, type=int)
     parser.add_argument('--num_users', default=10, type=int)
     parser.add_argument('--num_user_state', default=4, type=int)
     parser.add_argument('--pmax', default=3, type=float, help='max power')
@@ -83,19 +140,19 @@ def init_parser():
     parser.add_argument('--noise', default=1e-9, type=float)
 
     # PPO
-    parser.add_argument('--lr_a', default=0.0001, type=float, help='actor net learning rate')
-    parser.add_argument('--lr_c', default=0.0001, type=float, help='critic net learning rate')
+    parser.add_argument('--lr_a', default=0.0005, type=float, help='actor net learning rate')
+    parser.add_argument('--lr_c', default=0.001, type=float, help='critic net learning rate')
 
-    parser.add_argument('--max_global_step', type=int, default=500000)
-    parser.add_argument('--gamma', type=float, default=0.95)
+    parser.add_argument('--max_global_step', type=int, default=50000)
+    parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--slot_time', default=0.6, type=float)
 
     parser.add_argument('--repeat_time', default=20, type=int)
     parser.add_argument('--step', default=500, type=int)
-    parser.add_argument('--batch_size', default=256, type=int)
-    parser.add_argument('--lam', default=0.95, type=float)
+    parser.add_argument('--batch_size', default=512, type=int)
+    parser.add_argument('--lam', default=0.97, type=float)
     parser.add_argument('--eps_clip', default=0.2, type=float)
-    parser.add_argument('--w_entropy', default=0.001, type=float)
+    parser.add_argument('--w_entropy', default=0.05, type=float)
 
     return parser.parse_args()
 

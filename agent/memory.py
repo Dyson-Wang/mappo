@@ -33,7 +33,6 @@ class ActorBuffer:
         del self.actions_power_tensor
         del self.logprobs_power_tensor
 
-
 class HPPOBuffer:
     def __init__(self, num_actors):
         self.states = []
