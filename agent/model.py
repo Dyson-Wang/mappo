@@ -15,9 +15,9 @@ class Actor(nn.Module):
             nn.Linear(256, 128),
             nn.ReLU()
         )
-        self.point_header = nn.Sequential(nn.Linear(128, 64),
+        self.point_header = nn.Sequential(nn.Linear(128, 128),
                                           nn.ReLU(),
-                                          nn.Linear(64, num_points),
+                                          nn.Linear(128, num_points),
                                           nn.Softmax(dim=-1))
         self.channel_header = nn.Sequential(nn.Linear(128, 64),
                                             nn.ReLU(),
@@ -43,31 +43,32 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, num_states):
+    def __init__(self, num_states, num_agents):
         super(Critic, self).__init__()
-        self.embed_dim = 32
-        self.seq_len = num_states
-        self.lstm_hidden_size = 64
+        # self.embed_dim = 32
+        # self.seq_len = num_states
+        self.num_agents = num_agents
 
-        self.embedding = nn.Linear(num_states, self.seq_len * self.embed_dim)
-        self.attn = nn.MultiheadAttention(self.embed_dim, num_heads=2, batch_first=True)
+        # self.embedding = nn.Linear(num_states, self.seq_len * self.embed_dim)
+        # self.attn = nn.MultiheadAttention(self.embed_dim, num_heads=2, batch_first=True)
         self.mlp = nn.Sequential(
-            nn.Linear(self.seq_len * self.embed_dim, 256),
+            # nn.Linear(self.seq_len * self.embed_dim, 256),
+            nn.Linear(num_states, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(64, num_agents)
         )
 
     def forward(self, x):
         # x: (batch, num_states) 或 (1, num_states)
-        if x.dim() == 1:
-            x = x.unsqueeze(0)
-        batch_size = x.size(0)
-        embed = self.embedding(x)  # (batch, seq_len * embed_dim)
-        embed = embed.view(batch_size, self.seq_len, self.embed_dim)  # (batch, seq_len, embed_dim)
-        attn_out, _ = self.attn(embed, embed, embed)  # (batch, seq_len, embed_dim)
-        attn_flat = attn_out.reshape(batch_size, -1)  # (batch, seq_len * embed_dim)
-        return self.mlp(attn_flat)
+        # if x.dim() == 1:
+        #     x = x.unsqueeze(0)
+        # batch_size = x.size(0)
+        # embed = self.embedding(x)  # (batch, seq_len * embed_dim)
+        # embed = embed.view(batch_size, self.seq_len, self.embed_dim)  # (batch, seq_len, embed_dim)
+        # attn_out, _ = self.attn(embed, embed, embed)  # (batch, seq_len, embed_dim)
+        # attn_flat = attn_out.reshape(batch_size, -1)  # (batch, seq_len * embed_dim)
+        return self.mlp(x)

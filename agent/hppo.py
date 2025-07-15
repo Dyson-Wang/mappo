@@ -1,20 +1,23 @@
 import torch
 import torch.nn.functional as F
 from torch.distributions import Normal, Categorical
+import numpy as np
 
 from .memory import HPPOBuffer
 from .model import Actor, Critic
 
 
 class HPPO:
-    def __init__(self, num_users, num_states, num_channels, lr_a, lr_c, pmax, gamma, lam, repeat_time, batch_size,
-                 eps_clip, w_entropy):
+    def __init__(self, num_users, num_states, num_channels, num_splits, lr_a, lr_c, pmax, gamma, lam, repeat_time, batch_size, eps_clip, w_entropy):
         self.num_state_single = int(num_states / num_users)
-        self.actors = [Actor(self.num_state_single, 49, num_channels, pmax).cuda() for _ in range(num_users)]
-        self.critics = [Critic(num_states).cuda() for _ in range(num_users)]  # 每个智能体一个critic
+        self.num_users = num_users
 
-        self.optimizer_a = torch.optim.Adam([{'params': actor.parameters(), 'lr': lr_a} for actor in self.actors])
-        self.optimizer_c = [torch.optim.Adam(critic.parameters(), lr_c) for critic in self.critics]  # 每个critic一个optimizer
+        self.actors = [Actor(self.num_state_single, num_splits, num_channels, pmax).cuda() for _ in range(num_users)]
+        self.critic = Critic(num_states, num_users).cuda()
+
+        # self.optimizer_a = torch.optim.Adam([{'params': actor.parameters(), 'lr': lr_a} for actor in self.actors])
+        self.optimizer_a = [torch.optim.Adam(actor.parameters(), lr=lr_a) for actor in self.actors]
+        self.optimizer_c = torch.optim.Adam(self.critic.parameters(), lr_c)
 
         self.buffer = HPPOBuffer(num_users)
 
@@ -31,7 +34,8 @@ class HPPO:
             state = torch.tensor(state, dtype=torch.float32).cuda()
             actions = []
             for i, actor in enumerate(self.actors):
-                prob_points, prob_channels, (power_mu, power_sigma) = actor(state[i*self.num_state_single : i*self.num_state_single+self.num_state_single])
+                s = state[i*self.num_state_single : i*self.num_state_single+self.num_state_single]
+                prob_points, prob_channels, (power_mu, power_sigma) = actor(s)
 
                 # point
                 dist_point = Categorical(prob_points)
@@ -63,26 +67,29 @@ class HPPO:
 
     def update(self):
         self.buffer.build_tensor()
-        # 为每个智能体分别生成gae
+        # [T, num_users * num_state_single]
+        states = self.buffer.states_tensor
         with torch.no_grad():
-            pred_values_buffer = []
-            for i in range(len(self.actors)):
-                # 使用全局状态作为critic输入
-                states = self.buffer.states_tensor
-                pred_values_buffer.append(self.critics[i](states).squeeze())
-        target_values_buffer, advantages_buffer = [], []
-        for i in range(len(self.actors)):
-            tv, adv = self.get_gae(pred_values_buffer[i], i)
-            target_values_buffer.append(tv)
-            advantages_buffer.append(adv)
-
+            pred_values_buffer = self.critic(states) # [T, num_users]
+        # target_values_buffer, advantages_buffer = [], []
+        # for i in range(len(self.actors)):
+        #     tv, adv = self.get_gae(pred_values_buffer[:, i], i)
+        #     target_values_buffer.append(tv)
+        #     advantages_buffer.append(adv)
+        action_losses = []
+        critic_losses = []
+        entropies = []
+        target_values_buffer, advantages_buffer = self.get_gae(pred_values_buffer) # [T, num_users]
         for _ in range(int(self.repeat_time * (len(self.buffer) / self.batch_size))):
             indices = torch.randint(len(self.buffer), size=(self.batch_size,), requires_grad=False).cuda()
             state = self.buffer.states_tensor[indices]
-            # ...existing code...
-            loss_point = []
-            loss_channel = []
-            loss_power = []
+            target_values = target_values_buffer[indices]
+            advantages = advantages_buffer[indices]
+
+            # loss_point = []
+            # loss_channel = []
+            # loss_power = []
+
             for i, actor in enumerate(self.actors):
                 logprobs_point = self.buffer.actor_buffer[i].logprobs_point_tensor[indices]
                 logprobs_channel = self.buffer.actor_buffer[i].logprobs_channel_tensor[indices]
@@ -96,43 +103,54 @@ class HPPO:
 
                 # point
                 ratio_point = (new_logprobs_point - logprobs_point).exp()
-                surr1_point = advantages_buffer[i][indices] * ratio_point
-                surr2_point = advantages_buffer[i][indices] * torch.clamp(ratio_point, 1 - self.eps_clip, 1 + self.eps_clip)
-                loss_point.append((-torch.min(surr1_point, surr2_point) - self.w_entropy * entropy_point).mean())
+                surr1_point = advantages[i].unsqueeze(-1) * ratio_point
+                surr2_point = advantages[i].unsqueeze(-1) * torch.clamp(ratio_point, 1 - self.eps_clip, 1 + self.eps_clip)
+                loss_point = torch.min(surr1_point, surr2_point).mean()
                 # channel
                 ratio_channel = (new_logprobs_channel - logprobs_channel).exp()
-                surr1_channel = advantages_buffer[i][indices] * ratio_channel
-                surr2_channel = advantages_buffer[i][indices] * torch.clamp(ratio_channel, 1 - self.eps_clip, 1 + self.eps_clip)
-                loss_channel.append(
-                    (-torch.min(surr1_channel, surr2_channel) - self.w_entropy * entropy_channel).mean())
+                surr1_channel = advantages[i].unsqueeze(-1) * ratio_channel
+                surr2_channel = advantages[i].unsqueeze(-1) * torch.clamp(ratio_channel, 1 - self.eps_clip, 1 + self.eps_clip)
+                loss_channel = torch.min(surr1_channel, surr2_channel).mean()
                 # power
                 ratio_power = (new_logprobs_power - logprobs_power).exp()
-                surr1_power = advantages_buffer[i][indices] * ratio_power
-                surr2_power = advantages_buffer[i][indices] * torch.clamp(ratio_power, 1 - self.eps_clip, 1 + self.eps_clip)
-                loss_power.append((-torch.min(surr1_power, surr2_power) - self.w_entropy * entropy_power).mean())
-            loss_a = torch.stack(loss_point + loss_channel + loss_power).mean()
+                surr1_power = advantages * ratio_power
+                surr2_power = advantages * torch.clamp(ratio_power, 1 - self.eps_clip, 1 + self.eps_clip)
+                loss_power = torch.min(surr1_power, surr2_power).mean()
 
-            self.optimizer_a.zero_grad()
-            loss_a.backward()
-            self.optimizer_a.step()
+                loss_a = (loss_point + loss_channel + loss_power).mean()
+                entropy_val = (entropy_point + entropy_channel + entropy_power).mean()
 
-            # 分别更新每个critic
-            for i in range(len(self.actors)):
-                # 使用全局状态作为critic输入
-                states = state
-                pred_values = self.critics[i](states).squeeze()
-                self.optimizer_c[i].zero_grad()
-                loss_c = F.mse_loss(pred_values, target_values_buffer[i][indices])
-                loss_c.backward()
-                self.optimizer_c[i].step()
-                self.buffer.info['loss_value'] = loss_c.item()
+            # loss_a = torch.stack(loss_point + loss_channel + loss_power).mean()
+
+                self.optimizer_a[i].zero_grad()
+                loss_a.backward()
+                self.optimizer_a[i].step()
+
+                action_losses.append(loss_a.item())
+                entropies.append(entropy_val.item())
+
+            # 更新critic
+            pred_values = self.critic(state).squeeze()
+            self.optimizer_c.zero_grad()
+            loss_c = F.mse_loss(pred_values, target_values)
+            # loss_c = F.smooth_l1_loss(pred_values, target_values)
+            loss_c.backward()
+            self.optimizer_c.step()
+            self.buffer.info['loss_value'] = loss_c.item()
+            critic_losses.append(loss_c.item())
 
         self.buffer.init()
+        return np.mean(action_losses), np.mean(critic_losses), np.mean(entropies)
 
     def eval(self, idx, state, indices):
+        print(f"state.shape: {state.shape}")
+        print(f"indices length: {len(indices)}")
         actions_point = self.buffer.actor_buffer[idx].actions_point_tensor[indices]
         actions_channel = self.buffer.actor_buffer[idx].actions_channel_tensor[indices]
         actions_power = self.buffer.actor_buffer[idx].actions_power_tensor[indices]
+        print(f"actions_point.shape: {actions_point.shape}")
+        print(f"actions_channel.shape: {actions_channel.shape}")
+        print(f"actions_power.shape: {actions_power.shape}")
 
         prob_points, prob_channels, (power_mu, power_sigma) = self.actors[idx](state)
 
@@ -150,15 +168,15 @@ class HPPO:
 
         return logprobs_point, logprobs_channel, logprobs_power, entropy_point, entropy_channel, entropy_power
 
-    def get_gae(self, pred_values_buffer, idx):
+    def get_gae(self, pred_values_buffer):
         with torch.no_grad():
-            target_values_buffer = torch.empty(len(self.buffer), dtype=torch.float32).cuda()
-            advantages_buffer = torch.empty(len(self.buffer), dtype=torch.float32).cuda()
+            target_values_buffer = torch.empty((len(self.buffer), self.num_users), dtype=torch.float32).cuda()
+            advantages_buffer = torch.empty((len(self.buffer), self.num_users), dtype=torch.float32).cuda()
 
             next_value = 0
             next_advantage = 0
             for i in reversed(range(len(self.buffer))):
-                reward = self.buffer.rewards_tensor[i][idx]
+                reward = self.buffer.rewards_tensor[i]
                 mask = 1 - self.buffer.is_terminals_tensor[i]
                 # value
                 target_values_buffer[i] = reward + mask * self.gamma * next_value
@@ -171,15 +189,15 @@ class HPPO:
             advantages_buffer = (advantages_buffer - advantages_buffer.mean()) / (advantages_buffer.std() + 1e-5)
         return target_values_buffer, advantages_buffer
 
+
     def save_model(self, filename, args, info=None):
         dic = {'actor': [actor.state_dict() for actor in self.actors],
-               'critic': [critic.state_dict() for critic in self.critics],
+               'critic': self.critic.state_dict(),
                'args': args,
                'info': info}
         torch.save(dic, filename)
 
-    def load_model(self, actor_dicts, critic_dicts):
+    def load_model(self, actor_dicts, critic_dict):
         for actor, dict in zip(self.actors, actor_dicts):
             actor.load_state_dict(dict)
-        for critic, dict in zip(self.critics, critic_dicts):
-            critic.load_state_dict(dict)
+        self.critic.load_state_dict(critic_dict)

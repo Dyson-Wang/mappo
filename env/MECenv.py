@@ -47,10 +47,12 @@ class MECsystem(object):
             energy = u.energy_used
             finished = u.finished_num
             time = u.time_used
-            avg_e = energy / max(finished, 0.8)
-            avg_t = time / max(finished, 0.8)
-            # reward = - avg_t / 0.8312 - self.beta * avg_e / 124.2
-            reward = - avg_t / 0.8312 - self.beta * avg_e / 15.64466
+            # avg_e = energy / max(finished, 0.8)
+            # avg_t = time / max(finished, 0.8)
+            avg_t = time
+            avg_e = energy
+            reward = - avg_t / 0.8312 - self.beta * avg_e / 124.2
+            # reward = - avg_t
             # reward = - avg_t - self.beta * avg_e
             rewards.append(reward)
         return rewards
